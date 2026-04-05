@@ -1,0 +1,10 @@
+# Environment variables — never commit real credentials
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
