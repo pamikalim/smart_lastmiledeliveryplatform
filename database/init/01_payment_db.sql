@@ -1,0 +1,19 @@
+CREATE DATABASE IF NOT EXISTS payment_db;
+
+CREATE USER IF NOT EXISTS 'payment_user'@'%' IDENTIFIED BY 'payment123';
+GRANT ALL PRIVILEGES ON payment_db.* TO 'payment_user'@'%';
+FLUSH PRIVILEGES;
+
+USE payment_db;
+
+CREATE TABLE IF NOT EXISTS payments (
+    payment_id VARCHAR(100) PRIMARY KEY,
+    delivery_id VARCHAR(100) NOT NULL,
+    customer_id VARCHAR(100) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    currency VARCHAR(10) NOT NULL DEFAULT 'SGD',
+    status VARCHAR(20) NOT NULL,
+    provider_ref VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

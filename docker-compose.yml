@@ -1,0 +1,149 @@
+services:
+
+  # ── Infrastructure ───────────────────────────────────────────────────
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI → http://localhost:15672 (guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: app_user
+      MYSQL_PASSWORD: app_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/init:/docker-entrypoint-initdb.d  # SQL init scripts go here
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Atomic Services ──────────────────────────────────────────────────
+
+  payment-service:
+    build: ./services/payment-service
+    container_name: payment-service
+    ports:
+      - "5004:5004"
+    env_file:
+      - ./services/payment-service/.env
+    environment:
+      DB_HOST: mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  pricing-service:
+    build: ./services/pricing-service
+    container_name: pricing-service
+    ports:
+      - "5003:5003"
+    env_file:
+      - ./services/pricing-service/.env
+
+  rider-service:
+    build: ./services/rider-service
+    container_name: rider-service
+    ports:
+      - "5005:5005"
+    env_file:
+      - ./services/rider-service/.env
+    environment:
+      DB_HOST: mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # ── Composite Services ───────────────────────────────────────────────
+  # Megan's OutSystems service URLs (external, not in Docker):
+  #   DELIVERY_SERVICE_URL: https://personal-lqx7hrfq.outsystemscloud.com/Delivery/rest/Delivery
+  #   CUSTOMER_SERVICE_URL: https://personal-lqx7hrfq.outsystemscloud.com/Customer/rest/Customer
+  #
+
+  accept-job-service:
+    build: ./services/accept-job-service
+    container_name: accept-job-service
+    ports:
+      - "5006:5006"
+    env_file:
+      - ./services/accept-job-service/.env
+    environment:
+      RIDER_SERVICE_URL: http://rider-service:5005
+      PAYMENT_SERVICE_URL: http://payment-service:5004
+      RABBITMQ_HOST: rabbitmq
+      DELIVERY_SERVICE_URL: https://personal-lqx7hrfq.outsystemscloud.com/Delivery/rest/Delivery
+      CUSTOMER_SERVICE_URL: https://personal-lqx7hrfq.outsystemscloud.com/Customer/rest/Customer
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      rider-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
+
+  place-order-service:
+    build: ./services/place-order-service
+    container_name: place-order-service
+    ports:
+      - "5008:5008"
+    environment:
+      PRICING_SERVICE_URL: http://pricing-service:5003
+      PAYMENT_SERVICE_URL: http://payment-service:5004
+      RIDER_SERVICE_URL: http://rider-service:5005
+      DELIVERY_SERVICE_URL: https://personal-lqx7hrfq.outsystemscloud.com/Delivery/rest/Delivery
+      CUSTOMER_SERVICE_URL: https://personal-lqx7hrfq.outsystemscloud.com/Customer/rest/Customer
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      pricing-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
+
+  cancel-order-service:
+    build: ./services/cancel-order-service
+    container_name: cancel-order-service
+    ports:
+      - "5009:5009"
+    environment:
+      PAYMENT_SERVICE_URL: http://payment-service:5004
+      RIDER_SERVICE_URL: http://rider-service:5005
+      DELIVERY_SERVICE_URL: https://personal-lqx7hrfq.outsystemscloud.com/Delivery/rest/Delivery
+      CUSTOMER_SERVICE_URL: https://personal-lqx7hrfq.outsystemscloud.com/Customer/rest/Customer
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      payment-service:
+        condition: service_started
+
+  notification-service:
+    build: ./services/notification-service
+    container_name: notification-service
+    ports:
+      - "5007:5007"
+    env_file:
+      - ./services/notification-service/.env
+    environment:
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
